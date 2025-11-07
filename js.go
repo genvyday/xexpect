@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/dop251/goja"
-	"github.com/zh-five/xexpect/xexpect"
+	"xexpect/xexpect"
 )
 
 type JS struct {
@@ -26,9 +26,9 @@ func (sf *JS) Run(jsCode string) {
 	sf.vm.Set("xe_setTimeout", sf.xe_setTimeout) // func(second int)
 	sf.vm.Set("xe_matchs", sf.xe_matchs)          // func (rule [][]string) map[string]any{"idx": idx, "str": str}
 	sf.vm.Set("xe_term", sf.xe_term)              // func()
+	sf.vm.Set("xe_termWait", sf.xe_termWait)      // func()
 	sf.vm.Set("xe_exit", sf.xe_exit)              // func()
 	sf.vm.Set("xe_println", sf.xe_println)        // func(msg string)
-
 	_, err := sf.vm.RunString(jsCode)
 	if err != nil {
 		panic(err)
@@ -66,13 +66,15 @@ func (sf *JS) xe_matchs(value goja.FunctionCall) goja.Value {
 
 func (sf *JS) xe_term(_ goja.FunctionCall) goja.Value {
 	sf.xe.Term()
-
 	return sf.vm.ToValue(nil)
 }
-
+func (sf *JS) xe_termWait(call goja.FunctionCall) goja.Value {
+	str := call.Argument(0)
+	sf.xe.TermWait(str.String())
+	return str
+}
 func (sf *JS) xe_exit(_ goja.FunctionCall) goja.Value {
 	sf.xe.Exit()
-
 	return sf.vm.ToValue(nil)
 }
 

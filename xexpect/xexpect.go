@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"errors"
 
 	"github.com/iyzyi/aiopty/pty"
 	"github.com/iyzyi/aiopty/term"
@@ -31,6 +32,7 @@ type XExpect struct {
 	buf      []byte
 	start    int
 	matchLen int
+	sbf      []byte
 }
 
 type action struct {
@@ -49,6 +51,7 @@ func NewXExpect() *XExpect {
 		buf:      make([]byte, 1024),
 		start:    0,
 		matchLen: matchLen,
+		sbf:      make([]byte, 1024),
 	}
 }
 
@@ -93,18 +96,16 @@ func (sf *XExpect) Run(args []string) {
 	if err == nil {
 		sf.term = t
 	}
-
 	// 响应手动输入
 	if sf.term == nil {
 		go func() {
-			io.Copy(sf.ptmx, os.Stdin)
+		    io.CopyBuffer(sf.ptmx, os.Stdin,sf.sbf)
 		}()
 	} else {
 		go func() {
-			io.Copy(sf.ptmx, sf.term)
+		    io.CopyBuffer(sf.ptmx, sf.term,sf.sbf)
 		}()
 	}
-
 	// timeout
 	time.AfterFunc(time.Second*time.Duration(sf.timeout), func() {
 		if sf.step > stepExpect {
@@ -114,7 +115,53 @@ func (sf *XExpect) Run(args []string) {
 		sf.errorf("timeout exit")
 	})
 }
-
+func (sf *XExpect) match(buf []byte,match []byte,midx int)(ret int){
+    ret=midx
+    for i := range buf {
+        if match[ret] == buf[i]{
+             ret++
+        }else{
+            return 0
+        }
+    }
+    return ret
+}
+func (sf *XExpect) copyMatch(dst io.Writer, src io.Reader,matchb[]byte,buf []byte) (written int64, err error) {
+    midx :=0
+    mlen := len(matchb)
+	for {
+		nr, er := src.Read(buf)
+		if nr > 0 {
+			nw, ew := dst.Write(buf[0:nr])
+			if nw < 0 || nr < nw {
+				nw = 0
+				if ew == nil {
+					ew = errors.New("invalid write result")
+				}
+			}
+			written += int64(nw)
+			if ew != nil {
+				err = ew
+				break
+			}
+			if nr != nw {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if er != nil {
+			if er != io.EOF {
+				err = er
+			}
+			break
+		}
+        midx := sf.match(buf[0:nr],matchb,midx)
+        if midx == mlen{
+            break
+        }
+	}
+    return written, err
+}
 func (sf *XExpect) Matchs(rule [][]string) (int, string) {
 	if sf.step < stepRun {
 		sf.errorf("Matchs() must be called after Run()")
@@ -194,7 +241,13 @@ func (sf *XExpect) Matchs(rule [][]string) (int, string) {
 
 	return -1, ""
 }
-
+func (sf *XExpect) TermWait(wstr string) {
+	if sf.term == nil {
+		sf.copyMatch(os.Stdout, sf.ptmx,[]byte(wstr), sf.buf)
+	} else {
+	    sf.copyMatch(sf.term, sf.ptmx,[]byte(wstr), sf.buf)
+	}
+}
 func (sf *XExpect) Term() {
 	if sf.step < stepRun {
 		sf.errorf("Matchs() must be called after Run()")

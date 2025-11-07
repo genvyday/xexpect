@@ -1,4 +1,4 @@
-module github.com/zh-five/xexpect
+module xexpect
 
 go 1.18
 
