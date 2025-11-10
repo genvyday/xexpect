@@ -26,7 +26,10 @@ func (sf *JS) Run(jsCode string) {
 	sf.vm.Set("xe_setTimeout", sf.xe_setTimeout) // func(second int)
 	sf.vm.Set("xe_matchs", sf.xe_matchs)          // func (rule [][]string) map[string]any{"idx": idx, "str": str}
 	sf.vm.Set("xe_term", sf.xe_term)              // func()
-	sf.vm.Set("xe_termWait", sf.xe_termWait)      // func()
+	sf.vm.Set("xe_termUtil", sf.xe_termUtil)      // func()
+	sf.vm.Set("xe_readUtil", sf.xe_readUtil)      // func()
+	sf.vm.Set("xe_valHex", sf.xe_valHex)          // func()
+	sf.vm.Set("xe_valRaw", sf.xe_valRaw)          // func()
 	sf.vm.Set("xe_exit", sf.xe_exit)              // func()
 	sf.vm.Set("xe_println", sf.xe_println)        // func(msg string)
 	_, err := sf.vm.RunString(jsCode)
@@ -68,10 +71,23 @@ func (sf *JS) xe_term(_ goja.FunctionCall) goja.Value {
 	sf.xe.Term()
 	return sf.vm.ToValue(nil)
 }
-func (sf *JS) xe_termWait(call goja.FunctionCall) goja.Value {
+func (sf *JS) xe_termUtil(call goja.FunctionCall) goja.Value {
 	str := call.Argument(0)
-	sf.xe.TermWait(str.String())
+	sf.xe.TermUtil(str.String())
 	return str
+}
+func (sf *JS) xe_valRaw(call goja.FunctionCall) goja.Value {
+    ret :=sf.xe.ValRaw()
+    return sf.vm.ToValue(ret)
+}
+func (sf *JS) xe_valHex(call goja.FunctionCall) goja.Value {
+    ret :=sf.xe.ValHex()
+    return sf.vm.ToValue(ret)
+}
+func (sf *JS) xe_readUtil(call goja.FunctionCall) goja.Value {
+	str := call.Argument(0)
+	ret :=sf.xe.ReadUtil(str.String())
+	return sf.vm.ToValue(ret)
 }
 func (sf *JS) xe_exit(_ goja.FunctionCall) goja.Value {
 	sf.xe.Exit()

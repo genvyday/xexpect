@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 	"errors"
+	"bytes"
+    "encoding/hex"
 
 	"github.com/iyzyi/aiopty/pty"
 	"github.com/iyzyi/aiopty/term"
@@ -33,6 +35,9 @@ type XExpect struct {
 	start    int
 	matchLen int
 	sbf      []byte
+	vbf      []byte
+	vlen     int
+	waitv    bool
 }
 
 type action struct {
@@ -52,6 +57,9 @@ func NewXExpect() *XExpect {
 		start:    0,
 		matchLen: matchLen,
 		sbf:      make([]byte, 1024),
+		vbf:      make([]byte,1024),
+		vlen:     0,
+		waitv:    false,
 	}
 }
 
@@ -115,24 +123,32 @@ func (sf *XExpect) Run(args []string) {
 		sf.errorf("timeout exit")
 	})
 }
-func (sf *XExpect) match(buf []byte,match []byte,midx int)(ret int){
-    ret=midx
-    for i := range buf {
-        if match[ret] == buf[i]{
-             ret++
-        }else{
-            return 0
-        }
+func (sf *XExpect) saveVar(cutLen int,mlen int){
+    if !sf.waitv {
+        return
     }
-    return ret
+    vx:=cutLen-mlen;
+    vl:=len(sf.vbf)-sf.vlen;
+    if vx>vl{
+        vx=vl;
+    }
+    copy(sf.vbf[sf.vlen:],sf.buf[:vx])
+    sf.vlen+=vx
 }
-func (sf *XExpect) copyMatch(dst io.Writer, src io.Reader,matchb[]byte,buf []byte) (written int64, err error) {
-    midx :=0
-    mlen := len(matchb)
+func (sf *XExpect) cutBuf(dataLen int,cutLen int,mlen int){
+    if cutLen<0{
+        return
+    }
+    sf.saveVar(cutLen,mlen)
+    copy(sf.buf, sf.buf[cutLen:])
+    sf.start = dataLen-cutLen
+}
+func (sf *XExpect) streamFind(dst io.Writer, src io.Reader,matchb[]byte) (written int64, err error) {
+    mlen:=len(matchb)
 	for {
-		nr, er := src.Read(buf)
+		nr, er := src.Read(sf.buf[sf.start:])
 		if nr > 0 {
-			nw, ew := dst.Write(buf[0:nr])
+			nw, ew := dst.Write(sf.buf[sf.start : sf.start+nr])
 			if nw < 0 || nr < nw {
 				nw = 0
 				if ew == nil {
@@ -155,9 +171,12 @@ func (sf *XExpect) copyMatch(dst io.Writer, src io.Reader,matchb[]byte,buf []byt
 			}
 			break
 		}
-        midx := sf.match(buf[0:nr],matchb,midx)
-        if midx == mlen{
-            break
+        idx := bytes.Index(sf.buf,matchb)
+        if idx>-1 {
+            sf.cutBuf(sf.start + nr,idx+mlen, mlen)
+            return written, err
+        }else{
+            sf.cutBuf(sf.start + nr,sf.start+nr-mlen+1,0)
         }
 	}
     return written, err
@@ -241,12 +260,32 @@ func (sf *XExpect) Matchs(rule [][]string) (int, string) {
 
 	return -1, ""
 }
-func (sf *XExpect) TermWait(wstr string) {
+func (sf *XExpect) TermUtil(wstr string) {
 	if sf.term == nil {
-		sf.copyMatch(os.Stdout, sf.ptmx,[]byte(wstr), sf.buf)
+		sf.streamFind(os.Stdout, sf.ptmx,[]byte(wstr))
 	} else {
-	    sf.copyMatch(sf.term, sf.ptmx,[]byte(wstr), sf.buf)
+	    sf.streamFind(sf.term, sf.ptmx,[]byte(wstr))
 	}
+}
+func (sf *XExpect) ValHex() string{
+    return hex.EncodeToString(sf.vbf[0 : sf.vlen])
+}
+func (sf *XExpect) ValRaw() string{
+    return string(sf.vbf[0 : sf.vlen])
+}
+func (sf *XExpect) ReadUtil(wstr string) string {
+    sf.waitv=true
+    sf.vlen=0
+	if sf.term == nil {
+		sf.streamFind(os.Stdout, sf.ptmx,[]byte(wstr))
+	} else {
+	    sf.streamFind(sf.term, sf.ptmx,[]byte(wstr))
+	}
+    sf.waitv=false
+    x:=string(sf.vbf[0 : sf.vlen])
+    var ret string
+    fmt.Sscanf(x,"%s",&ret);
+    return ret
 }
 func (sf *XExpect) Term() {
 	if sf.step < stepRun {
