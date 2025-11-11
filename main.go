@@ -24,7 +24,7 @@ func main() {
 		code = readFromFile(*jsPath)
 	} else if *jxPath != "" {
      	code = readFromFile(*jxPath)
-     	fmt.Print("Please enter decrypt key: ")
+     	fmt.Print("Please enter password decrypt key: ")
      	inputReader := bufio.NewReader(os.Stdin)
      	pwd, _ = inputReader.ReadString('\n')
      	pwd=strings.Trim(pwd," \t\n\r")
