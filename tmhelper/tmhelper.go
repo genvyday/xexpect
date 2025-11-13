@@ -112,12 +112,10 @@ func (sf *TMHelper) Run(args []string) {
 	if sf.term == nil {
 		go func() {
 		    _,err=io.CopyBuffer(sf.ptmx, os.Stdin,sf.sbf)
-		    sf.err=err
 		}()
 	} else {
 		go func() {
 		    _,err=io.CopyBuffer(sf.ptmx, sf.term,sf.sbf)
-		    sf.err=err
 		}()
 	}
 	// timeout
