@@ -15,14 +15,14 @@ import (
 type JS struct {
 	vm *goja.Runtime
 	xe *tmhelper.TMHelper
-	pwd string
+	cptkey  []byte
 }
 
 func NewJS() *JS {
 	return &JS{
 		vm: goja.New(),
 		xe: tmhelper.NewTMHelper(),
-		pwd: "",
+		cptkey: nil,
 	}
 }
 
@@ -33,17 +33,13 @@ func (sf *JS) Run(jsCode string) {
 		panic(err)
 	}
 }
-func (sf *JS) putKey(key string){
-    sf.pwd=key
-	sf.xe.AesKey([]byte(key))
-}
 func (sf *JS) CptKey(value goja.FunctionCall) goja.Value {
     ekey:=value.Argument(0).String()
     chk:=value.Argument(1).String()
     enc:=tmhelper.EncText("123",ekey)
     valid:=enc==chk;
     if(valid){
-        sf.putKey(ekey)
+        sf.cptkey=tmhelper.GenKey([]byte(ekey),32)
     }
 	return sf.vm.ToValue(valid)
 }
@@ -52,11 +48,11 @@ func (sf *JS) Ok(value goja.FunctionCall) goja.Value {
 }
 func (sf *JS) Dec(value goja.FunctionCall) goja.Value {
     str := value.Argument(0)
-    if len(sf.pwd)==0{
+    if sf.cptkey==nil||len(sf.cptkey)==0{
         return str
     }
     encData,_:=base64.RawURLEncoding.DecodeString(str.String())
-	plain:=string(sf.xe.Dec(encData))
+	plain:=string(tmhelper.AesDec(encData,sf.cptkey))
 	return sf.vm.ToValue(plain)
 }
 
@@ -65,10 +61,10 @@ func (sf *JS) Goos(value goja.FunctionCall) goja.Value {
 }
 func (sf *JS) Enc(value goja.FunctionCall) goja.Value {
     str := value.Argument(0)
-    if len(sf.pwd)==0{
+    if sf.cptkey==nil||len(sf.cptkey)==0{
         return str
     }
-	encData:=sf.xe.Enc([]byte(str.String()))
+	encData:=tmhelper.AesEnc([]byte(str.String()),sf.cptkey)
 	ret:=base64.RawURLEncoding.EncodeToString(encData)
 	return sf.vm.ToValue(ret)
 }

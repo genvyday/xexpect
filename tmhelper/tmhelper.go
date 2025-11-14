@@ -19,12 +19,6 @@ import (
 )
 
 const (
-	stepNew      = 0
-	stepRun      = 1
-	stepExpect   = 2
-	stepInteract = 3
-	stepExit     = 4
-
 	matchLen = 32
 )
 
@@ -32,15 +26,12 @@ type TMHelper struct {
 	ptmx    *pty.Pty
 	term    *term.Term
 	timeout int // 总超时时间，秒
-
-	step     int
 	buf      []byte
 	start    int
 	matchLen int
 	sbf      []byte
 	vbf      []byte
 	vlen     int
-	key      []byte
 	err      error
 	timer    *time.Timer
 	mtx      sync.Mutex
@@ -59,7 +50,6 @@ func NewTMHelper() *TMHelper {
 		ptmx:     nil,
 		term:     nil,
 		timeout:  10,
-		step:     stepNew,
 		buf:      make([]byte, 1024),
 		start:    0,
 		matchLen: matchLen,
@@ -72,14 +62,6 @@ func NewTMHelper() *TMHelper {
 }
 
 func (sf *TMHelper) SetTimeout(second int) {
-	if sf.step != stepNew {
-		sf.errorf("SetTimeout() must be called before Run()")
-	}
-
-	if second < 1 {
-		sf.errorf("timeout(second) must be greater than 0 ")
-	}
-
 	sf.timeout = second
 }
 
@@ -87,7 +69,6 @@ func (sf *TMHelper) Run(args []string) {
     sf.err = nil
     sf.start=0
 	sf.vlen=  0
-	sf.step = stepRun
     sf.ilen=0
 	opt := &pty.Options{
 		Path: args[0],
@@ -115,13 +96,16 @@ func (sf *TMHelper) Run(args []string) {
 	// 响应手动输入
 	go sf.relayInput()
 	// timeout
-	sf.timer=time.AfterFunc(time.Second*time.Duration(sf.timeout), func() {
-		if sf.step > stepExpect {
-			return
-		}
+	if sf.timeout >0{
+    	sf.timer=time.AfterFunc(time.Second*time.Duration(sf.timeout),sf.timerFunc)
+	}
+}
+func (sf *TMHelper) timerFunc(){
+    if sf.ptmx!=nil{
 		sf.close()
 		sf.errorf("timeout exit")
-	})
+		os.Exit(1)
+    }
 }
 func (sf *TMHelper) ReadInput(prompt string) (ret string){
     sf.ilen=0
@@ -152,7 +136,7 @@ func (sf *TMHelper) relayInput(){
     var er error
     var r io.Reader
     r=sf.term;
-    if r ==nil{
+    if r==nil{
         r=os.Stdin
     }
     w:=sf.ptmx
@@ -176,17 +160,6 @@ func (sf *TMHelper) relayInput(){
             break;
         }
     }
-}
-func (sf *TMHelper) AesKey(key []byte){
-    if len(key) !=0{
-        sf.key=GenKey(key,32)
-    }
-}
-func (sf *TMHelper) Enc(plain []byte)([] byte){
-    return AesEnc(plain,sf.key)
-}
-func (sf *TMHelper) Dec(enc []byte)([] byte){
-    return AesDec(enc,sf.key)
 }
 func (sf *TMHelper) saveVal(cutLen int,mlen int){
     vx:=cutLen-mlen;
@@ -253,20 +226,10 @@ func (sf *TMHelper) streamFind(dst io.Writer, src io.Reader,str string,readVal b
     return written, err
 }
 func (sf *TMHelper) Matchs(rule [][]string) (int, string) {
-	if sf.step < stepRun {
-		sf.errorf("Matchs() must be called after Run()")
-	}
-	if sf.step > stepExpect {
-		sf.errorf("Matchs() must be called befor Exit() and Interact() ")
-	}
-	sf.step = stepExpect
-
 	listAction := sf.parseRule(rule)
-
 	isMatch := false
 	matchStr := ""
 	cutLen := 0
-
 	for {
 		n, err := sf.ptmx.Read(sf.buf[sf.start:])
 		sf.err=err
@@ -378,24 +341,13 @@ func (sf *TMHelper) ReadStr(wstr string) string {
     return formal(string(sf.vbf[0 : sf.vlen]))
 }
 func (sf *TMHelper) Ok() bool{
-    return sf.step != stepExit&&sf.err==nil;
+    return sf.ptmx!=nil&&sf.err==nil;
 }
 func (sf *TMHelper) Error() error{
     return sf.err
 }
 func (sf *TMHelper) Term() {
-	if sf.step < stepRun {
-		sf.errorf("Matchs() must be called after Run()")
-	}
-	if sf.step == stepInteract {
-		sf.errorf("Interact() does not allow repeated calls")
-	}
-	if sf.step == stepExit {
-		sf.errorf("Interact() can not called after Exit()")
-	}
-	sf.step = stepInteract
 	defer sf.close()
-
 	if sf.term == nil {
 		io.Copy(os.Stdout, sf.ptmx)
 	} else {
@@ -404,10 +356,7 @@ func (sf *TMHelper) Term() {
 }
 
 func (sf *TMHelper) Exit() {
-	if sf.step != stepExit {
-	    sf.close()
-	}
-	sf.step = stepExit
+    sf.close()
 }
 
 func (sf *TMHelper) close() {
