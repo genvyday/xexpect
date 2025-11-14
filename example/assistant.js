@@ -10,20 +10,35 @@ const creds=new Map([ //credentials
   ["prdsvc",{user:"prdsvc",pwd:"QfD4JR0V0ySRWjL4sIKCNQ"}],
 ]);
 
-var hosts=[
+const hosts=[
 	{name:"dev.001",host:"172.16.0.2",cred:creds.get("devdrt"),lgn:directlgn},
 	{name:"uat.chn",host:"192.168.0.2",cred:creds.get("uatbst"),lgn:bstlgn,scred:uatscred},
 	{name:"prd.usa",host:tmh_dec("bnP6wmuI9bi3l9dnn1Y6cg"),cred:creds.get("prdbst"),lgn:bstlgn,scred:prdscred,port:"22"},
 ];
+const hcount=hosts.length;
 tmh_setTimeout(999999999);
-tmh_println("\n\nhosts list：");
-for(i=0;i<hosts.length;++i)
+mainloop();
+
+function mainloop()
 {
-    tmh_println(i+": "+hosts[i].name+"\t"+hosts[i].host);
+	var hidx=hcount;
+	while(hidx!=0)
+	{
+		if(tmh_goos()=="windows") tmh_waitDone("\nPress Any Key To Select Host:");
+		tmh_println("\n\nHost List：");
+		for(i=0;i<hcount;++i)
+		{
+			tmh_println("\t"+i+": "+hosts[i].name+"\t"+hosts[i].host);
+		}
+		hidx=hcount;
+		for(j=0;j<10&&(hidx>=hcount||isNaN(hidx));++j)
+		{
+			s=tmh_input("Please Select[0-"+hcount+"]：");
+			hidx=parseInt(s);
+			if(hidx<hosts.length&&hidx!=0) hosts[hidx].lgn(hosts[hidx]);
+		}
+	}
 }
-i=tmh_input("select host:");
-var host=hosts[parseInt(i)];
-if(host!=null) host.lgn(host);
 function bstlgn(host) //login bastion host first
 {
     sshconnect(host);
