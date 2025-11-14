@@ -142,9 +142,8 @@ func (sf *JS) tmh_pwd(call goja.FunctionCall) goja.Value {
 	return sf.vm.ToValue(string(bpwd))
 }
 func (sf *JS) tmh_input(call goja.FunctionCall) goja.Value {
-	str := call.Argument(0)
-	fmt.Print(str.String())
-	return sf.vm.ToValue(tmhelper.ReadStr(os.Stdin))
+	str := sf.xe.ReadInput(call.Argument(0).String())
+	return sf.vm.ToValue(str)
 }
 func (sf *JS) tmh_println(call goja.FunctionCall) goja.Value {
 	str := call.Argument(0)

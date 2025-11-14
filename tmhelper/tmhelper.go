@@ -10,6 +10,8 @@ import (
 	"time"
 	"errors"
 	"bytes"
+	"sync"
+	"runtime"
     "encoding/hex"
 
 	"github.com/iyzyi/aiopty/pty"
@@ -41,6 +43,8 @@ type TMHelper struct {
 	key      []byte
 	err      error
 	timer    *time.Timer
+	mtx      sync.Mutex
+	ilen     int
 }
 
 type action struct {
@@ -84,7 +88,7 @@ func (sf *TMHelper) Run(args []string) {
     sf.start=0
 	sf.vlen=  0
 	sf.step = stepRun
-
+    sf.ilen=0
 	opt := &pty.Options{
 		Path: args[0],
 		Args: args,
@@ -109,15 +113,7 @@ func (sf *TMHelper) Run(args []string) {
 		sf.term = t
 	}
 	// 响应手动输入
-	if sf.term == nil {
-		go func() {
-		    _,err=io.CopyBuffer(sf.ptmx, os.Stdin,sf.sbf)
-		}()
-	} else {
-		go func() {
-		    _,err=io.CopyBuffer(sf.ptmx, sf.term,sf.sbf)
-		}()
-	}
+	go sf.relayInput()
 	// timeout
 	sf.timer=time.AfterFunc(time.Second*time.Duration(sf.timeout), func() {
 		if sf.step > stepExpect {
@@ -126,6 +122,60 @@ func (sf *TMHelper) Run(args []string) {
 		sf.close()
 		sf.errorf("timeout exit")
 	})
+}
+func (sf *TMHelper) ReadInput(prompt string) (ret string){
+    sf.ilen=0
+    fmt.Print(prompt)
+    sf.mtx.Lock()
+    defer sf.mtx.Unlock()
+    c:=0
+    if sf.ilen>0{
+        ret=formal(string(sf.sbf[:sf.ilen]))
+        c=int(sf.sbf[sf.ilen-1])
+        sf.ilen=0
+    }
+    if c!='\n'&&c!='\r'{
+        ret=ret+ReadStr(os.Stdin)
+    }
+    return ret
+}
+func (sf *TMHelper) relayExit(cutLen int,dlen int){
+    if dlen>cutLen{
+        copy(sf.sbf, sf.sbf[cutLen:dlen])
+        sf.ilen=dlen-cutLen
+        if runtime.GOOS=="windows"{
+            fmt.Print(string(sf.sbf[:sf.ilen]))
+        }
+    }
+}
+func (sf *TMHelper) relayInput(){
+    var er error
+    var r io.Reader
+    r=sf.term;
+    if r ==nil{
+        r=os.Stdin
+    }
+    w:=sf.ptmx
+    nr:=0
+    sf.mtx.Lock()
+    defer sf.mtx.Unlock()
+    for{
+        nr, er = r.Read(sf.sbf)
+        if(nr>0){
+            wrtd:=0
+            for wrtd<nr {
+                nw, ew := w.Write(sf.sbf[wrtd:nr])
+                if ew != nil||nw<0{
+                    sf.relayExit(wrtd,nr)
+                    return
+                }
+                wrtd =wrtd+nw
+            }
+        }
+        if er!=nil{
+            break;
+        }
+    }
 }
 func (sf *TMHelper) AesKey(key []byte){
     if len(key) !=0{
@@ -154,7 +204,7 @@ func (sf *TMHelper) cutBuf(dataLen int,cutLen int,mlen int,readVal bool){
     if readVal{
         sf.saveVal(cutLen,mlen)
     }
-    copy(sf.buf, sf.buf[cutLen:])
+    copy(sf.buf, sf.buf[cutLen:dataLen])
     sf.start = dataLen-cutLen
 }
 func ReadStr(in io.Reader)string{
