@@ -26,12 +26,13 @@ func NewJS() *JS {
 	}
 }
 
-func (sf *JS) Run(jsCode string) {
+func (sf *JS) Run(jsCode string) goja.Value {
     sf.vm.Set("tmh", sf)
-	_, err := sf.vm.RunString(jsCode)
+	v, err := sf.vm.RunString(jsCode)
 	if err != nil {
 		panic(err)
 	}
+    return v;
 }
 func (sf *JS) CptKey(value goja.FunctionCall) goja.Value {
     ekey:=value.Argument(0).String()
